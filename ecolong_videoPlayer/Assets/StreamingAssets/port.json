@@ -1,0 +1,34 @@
+{
+    "ports": [
+        {
+            "controllerId": 1,
+            "com": "COM4",
+            "baudLate": 19200,
+            "enabled": false
+        },
+        {
+            "controllerId": 2,
+            "com": "COM5",
+            "baudLate": 19200,
+            "enabled": false
+        },
+        {
+            "controllerId": 3,
+            "com": "COM6",
+            "baudLate": 19200,
+            "enabled": false
+        },
+        {
+            "controllerId": 4,
+            "com": "COM7",
+            "baudLate": 19200,
+            "enabled": false
+        },
+        {
+            "controllerId": 5,
+            "com": "COM8",
+            "baudLate": 19200,
+            "enabled": false
+        }
+    ]
+}
