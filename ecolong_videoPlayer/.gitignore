@@ -106,5 +106,9 @@ InitTestScene*.unity*
 /[Aa]ssets/[Ss]ceneDependencyCache*
 
 # 사용자 교체용 비디오 파일 (대용량, GitHub 100MB 제한 초과)
-/[Aa]ssets/StreamingAssets/video/video*.*
+# 폴더 구조(.gitkeep)와 폴더 .meta 는 커밋하고, 영상 파일만 무시한다
+/[Aa]ssets/StreamingAssets/video/**
+!/[Aa]ssets/StreamingAssets/video/*/
+!/[Aa]ssets/StreamingAssets/video/*.meta
 !/[Aa]ssets/StreamingAssets/video/README.txt*
+!/[Aa]ssets/StreamingAssets/video/*/.gitkeep
