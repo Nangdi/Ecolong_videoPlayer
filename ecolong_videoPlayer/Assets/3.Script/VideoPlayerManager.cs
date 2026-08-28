@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 using RenderHeads.Media.AVProVideo;
 
 // MediaPlayer 하나와 재생목록 하나를 묶어서
@@ -210,8 +211,13 @@ public class VideoPlayerManager : MonoBehaviour
     [SerializeField] private DisplayUGUI display;
     [Tooltip("대기 화면에서 멈춰서 보여줄 지점(초). 영상이 검은 화면으로 시작하면 장면이 보이는 지점으로 조절")]
     [SerializeField] private double standbyTime = 0.01;
-    [Tooltip("체크하면 Q 비교 화면의 좌우 영상이 비율을 무시하고 칸을 꽉 채운다. 해제하면 원본 비율 유지")]
+    [Tooltip("Q 비교 화면에서 좌우 영상을 담을 상자의 비율 (기본 2160 x 1920). 상자는 화면 절반 칸 안에 비율을 유지한 채 최대 크기로 배치된다")]
+    [SerializeField] private Vector2Int compareVideoResolution = new Vector2Int(2160, 1920);
+    [Tooltip("체크하면 원본 비율을 무시하고 위 상자를 꽉 채운다(1920x1080 영상도 2160x1920 비율로 늘어남). 해제하면 상자 안에서 원본 비율 유지")]
     [SerializeField] private bool compareStretchToFill = true;
+    [Tooltip("비교 화면 좌우 칸 위쪽 여백에 표시할 이름")]
+    [SerializeField] private string leftLabel = "team1";
+    [SerializeField] private string rightLabel = "team2";
     [Tooltip("비교 화면에서 좌우 영상이 동시에 소리를 내지 않도록 음소거")]
     [SerializeField] private bool muteCompareAudio = true;
 
@@ -248,6 +254,7 @@ public class VideoPlayerManager : MonoBehaviour
     private VideoChannel rightChannel; // 비교 화면 오른쪽 (team2)
 
     private GameObject compareCanvasRoot;
+    private float compareLabelBandHeight; // 영상 상자 위/아래 여백 높이 (라벨 자리)
 
     private int currentSetIndex = -1; // 현재 선택된 숫자 폴더
     private bool compareMode;         // Q 비교 화면 표시 중인지
@@ -266,6 +273,7 @@ public class VideoPlayerManager : MonoBehaviour
         if (display != null)
         {
             display.Player = mediaPlayer;
+            HideEditorPlaceholder(display);
         }
 
         BuildCompareView();
@@ -423,32 +431,43 @@ public class VideoPlayerManager : MonoBehaviour
     // 비교 화면용 캔버스 / MediaPlayer / DisplayUGUI 를 코드로 생성한다 (씬 세팅 불필요)
     private void BuildCompareView()
     {
-        compareCanvasRoot = new GameObject("CompareCanvas");
+        // RectTransform 을 반드시 생성자에서 만들어야 한다.
+        // 일반 Transform 위에 Canvas 를 붙이면 자식 UI 들이 크기 0인 사각형을 기준으로
+        // 배치돼서 화면에 아무것도 그려지지 않는다.
+        compareCanvasRoot = new GameObject("CompareCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler));
         compareCanvasRoot.SetActive(false);
         compareCanvasRoot.transform.SetParent(transform, false);
 
-        Canvas canvas = compareCanvasRoot.AddComponent<Canvas>();
+        Canvas canvas = compareCanvasRoot.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 100; // 전체 화면 영상(VideoCanvas) 위에 그린다
 
-        CanvasScaler scaler = compareCanvasRoot.AddComponent<CanvasScaler>();
+        CanvasScaler scaler = compareCanvasRoot.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
         scaler.matchWidthOrHeight = 0.5f;
 
         // 좌우 영상 바깥 여백을 검은색으로 덮는다
-        var background = new GameObject("Background", typeof(RectTransform), typeof(Image));
+        // Graphic 계열(Image, DisplayUGUI)은 CanvasRenderer 가 없으면 아무것도 그리지 않는다.
+        // 런타임 AddComponent 로는 RequireComponent 의존성이 붙지 않으므로 직접 넣어준다.
+        var background = new GameObject("Background", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         background.transform.SetParent(compareCanvasRoot.transform, false);
         StretchToParent(background.GetComponent<RectTransform>());
         background.GetComponent<Image>().color = Color.black;
 
-        leftChannel = CreateCompareChannel("Left", 0f, 0.5f);
-        rightChannel = CreateCompareChannel("Right", 0.5f, 1f);
+        // 영상 상자를 절반 칸에 비율 유지로 넣었을 때 위/아래에 남는 여백 높이 (라벨 자리)
+        // 예: 절반 칸 960x1080, 비율 2160:1920 -> 상자 960x853 -> 위아래 각각 113
+        float halfWidth = scaler.referenceResolution.x * 0.5f;
+        float boxHeight = Mathf.Min(scaler.referenceResolution.y, halfWidth * compareVideoResolution.y / compareVideoResolution.x);
+        compareLabelBandHeight = Mathf.Max(0f, (scaler.referenceResolution.y - boxHeight) * 0.5f);
+
+        leftChannel = CreateCompareChannel("Left", leftLabel, 0f, 0.5f);
+        rightChannel = CreateCompareChannel("Right", rightLabel, 0.5f, 1f);
     }
 
     // 화면을 좌우로 나눈 한쪽 칸에 DisplayUGUI 를 배치하고 전용 MediaPlayer 를 만든다
-    private VideoChannel CreateCompareChannel(string name, float anchorMinX, float anchorMaxX)
+    private VideoChannel CreateCompareChannel(string name, string labelText, float anchorMinX, float anchorMaxX)
     {
         // 화면의 절반을 차지하는 칸
         var half = new GameObject(name + "Half", typeof(RectTransform));
@@ -471,21 +490,66 @@ public class VideoPlayerManager : MonoBehaviour
         player.AudioMuted = muteCompareAudio; // 좌우 소리가 겹치지 않도록
         playerObject.SetActive(true);
 
-        var view = new GameObject(name + "Video");
-        view.SetActive(false);
+        // 영상 상자: 절반 칸 안에서 2160:1920 비율을 유지한 채 최대 크기로 배치된다
+        // CanvasRenderer 를 반드시 함께 만들어야 DisplayUGUI 가 화면에 그려진다
+        var view = new GameObject(name + "Video", typeof(RectTransform), typeof(CanvasRenderer));
         view.transform.SetParent(half.transform, false);
-        StretchToParent(view.AddComponent<RectTransform>());
+
+        AspectRatioFitter fitter = view.AddComponent<AspectRatioFitter>();
+        fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        fitter.aspectRatio = (float)compareVideoResolution.x / compareVideoResolution.y;
 
         DisplayUGUI videoDisplay = view.AddComponent<DisplayUGUI>();
         videoDisplay.Player = player;
-        // StretchToFill : 비율 무시하고 칸을 꽉 채움 (1920x1080 영상도 위아래로 늘어남)
-        // ScaleToFit    : 원본 비율 유지 (위아래 또는 좌우에 여백 발생)
+        // StretchToFill : 원본 비율 무시하고 상자를 꽉 채움 (1920x1080 영상도 2160x1920 비율로 늘어남)
+        // ScaleToFit    : 상자 안에서 원본 비율 유지
         videoDisplay.ScaleMode = compareStretchToFill
             ? UnityEngine.ScaleMode.StretchToFill
             : UnityEngine.ScaleMode.ScaleToFit;
-        view.SetActive(true);
+        HideEditorPlaceholder(videoDisplay);
+
+        CreateCompareLabel(name, labelText, half.transform);
 
         return new VideoChannel(player, standbyTime);
+    }
+
+    // 영상 상자 위쪽 여백에 team1 / team2 이름을 표시한다
+    private void CreateCompareLabel(string name, string labelText, Transform parent)
+    {
+        if (string.IsNullOrEmpty(labelText) || compareLabelBandHeight <= 0f)
+        {
+            return; // 표시할 이름이 없거나 여백이 없으면 만들지 않는다
+        }
+
+        // TextMeshProUGUI 도 Graphic 이라 CanvasRenderer 가 필요하다
+        var labelObject = new GameObject(name + "Label", typeof(RectTransform), typeof(CanvasRenderer));
+        labelObject.transform.SetParent(parent, false);
+
+        // 칸 위쪽 여백을 그대로 차지하게 만든다
+        RectTransform labelRect = labelObject.GetComponent<RectTransform>();
+        labelRect.anchorMin = new Vector2(0f, 1f);
+        labelRect.anchorMax = new Vector2(1f, 1f);
+        labelRect.pivot = new Vector2(0.5f, 1f);
+        labelRect.offsetMin = new Vector2(0f, -compareLabelBandHeight);
+        labelRect.offsetMax = Vector2.zero;
+
+        TextMeshProUGUI label = labelObject.AddComponent<TextMeshProUGUI>();
+        label.text = labelText;
+        label.color = Color.white;
+        label.alignment = TextAlignmentOptions.Center;
+        label.enableAutoSizing = true; // 여백 높이에 맞춰 글자 크기 자동 조절
+        label.fontSizeMin = 12f;
+        label.fontSizeMax = compareLabelBandHeight * 0.6f;
+        label.raycastTarget = false;
+    }
+
+    // 영상 전환 중 텍스처가 잠깐 비는 순간 에디터에서 AVPro 로고가 번쩍이는 것을 막는다
+    // (DisplayUGUI.mainTexture 가 텍스처 없을 때 에디터 한정으로 AVProVideoIcon 을 그린다.
+    //  꺼두면 텍스처가 없는 동안 아무것도 그리지 않는다 - 빌드에는 원래 나오지 않는 표시)
+    private static void HideEditorPlaceholder(DisplayUGUI target)
+    {
+        target.NoDefaultDisplay = true;
+        target.DisplayInEditor = false;
     }
 
     private static void StretchToParent(RectTransform rect)
