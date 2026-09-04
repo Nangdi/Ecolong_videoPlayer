@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
@@ -17,6 +17,9 @@ public class VideoChannel
     private int index = -1;
     private string currentPath;  // 현재 열려 있는 영상 경로
     private bool pendingStandby; // 로드 완료 후 대기 프레임으로 이동해야 하는 상태
+
+    // 앞으로 감을 때 영상 끝을 넘지 않도록 남겨두는 여유 시간(초)
+    private const double EndMargin = 0.1;
 
     public VideoChannel(MediaPlayer player, double standbyTime)
     {
@@ -86,6 +89,29 @@ public class VideoChannel
 
         pendingStandby = false;
         control.Pause();
+    }
+
+    // 현재 위치에서 offsetSeconds 만큼 앞/뒤로 이동한다 (재생 중이면 재생 상태 그대로 유지)
+    public void SeekRelative(double offsetSeconds)
+    {
+        IMediaControl control = player.Control;
+        if (control == null || !control.CanPlay())
+        {
+            return;
+        }
+
+        pendingStandby = false; // 대기 프레임 이동 예약이 남아 있으면 해제 (사용자 조작이 우선)
+
+        double target = control.GetCurrentTime() + offsetSeconds;
+        double duration = player.Info != null ? player.Info.GetDuration() : 0.0;
+
+        if (duration > 0.0)
+        {
+            // 정확히 끝으로 가면 FinishedPlaying 이 떠서 다음 영상으로 넘어가므로 살짝 앞에서 멈춘다
+            target = Math.Min(target, Math.Max(0.0, duration - EndMargin));
+        }
+
+        control.Seek(Math.Max(0.0, target));
     }
 
     public void TogglePlayPause()
@@ -211,6 +237,8 @@ public class VideoPlayerManager : MonoBehaviour
     [SerializeField] private DisplayUGUI display;
     [Tooltip("대기 화면에서 멈춰서 보여줄 지점(초). 영상이 검은 화면으로 시작하면 장면이 보이는 지점으로 조절")]
     [SerializeField] private double standbyTime = 0.01;
+    [Tooltip("좌우 방향키로 앞뒤로 이동할 시간(초)")]
+    [SerializeField] private double seekStepSeconds = 5.0;
     [Tooltip("Q 비교 화면에서 좌우 영상을 담을 상자의 비율 (기본 2160 x 1920). 상자는 화면 절반 칸 안에 비율을 유지한 채 최대 크기로 배치된다")]
     [SerializeField] private Vector2Int compareVideoResolution = new Vector2Int(2160, 1920);
     [Tooltip("체크하면 원본 비율을 무시하고 위 상자를 꽉 채운다(1920x1080 영상도 2160x1920 비율로 늘어남). 해제하면 상자 안에서 원본 비율 유지")]
@@ -336,6 +364,16 @@ public class VideoPlayerManager : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Space))
         {
             TogglePlayPause(); // 재생/정지 토글
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.RightArrow))
+        {
+            SeekRelative(seekStepSeconds); // 5초 앞으로
+        }
+        else if (Input.GetKeyDown(KeyCode.LeftArrow))
+        {
+            SeekRelative(-seekStepSeconds); // 5초 뒤로
         }
     }
 
@@ -385,6 +423,19 @@ public class VideoPlayerManager : MonoBehaviour
             leftChannel.Play();
             rightChannel.Play();
         }
+    }
+
+    // 좌우 방향키: 비교 화면에서는 좌우 영상을 함께, 단일 화면에서는 현재 영상만 이동
+    private void SeekRelative(double offsetSeconds)
+    {
+        if (!compareMode)
+        {
+            mainChannel.SeekRelative(offsetSeconds);
+            return;
+        }
+
+        leftChannel.SeekRelative(offsetSeconds);
+        rightChannel.SeekRelative(offsetSeconds);
     }
 
     // Q: team1 / team2 영상을 좌우로 나란히 띄워 비교한다

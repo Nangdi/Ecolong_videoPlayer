@@ -993,6 +993,11 @@ MonoBehaviour:
   mediaPlayer: {fileID: 1366374453}
   display: {fileID: 1714365931}
   standbyTime: 0.01
+  compareVideoResolution: {x: 2160, y: 1920}
+  compareStretchToFill: 1
+  leftLabel: Team1
+  rightLabel: Team2
+  muteCompareAudio: 1
 --- !u!4 &1366374452
 Transform:
   m_ObjectHideFlags: 0
