@@ -12,19 +12,22 @@ public class VideoChannel
 {
     private readonly MediaPlayer player;
     private readonly double standbyTime;
+    private readonly bool holdLastFrame; // true: 마지막 영상이 끝나면 첫 영상 대기 대신 마지막 프레임에서 멈춤
 
     private List<string> clips = new List<string>();
     private int index = -1;
     private string currentPath;  // 현재 열려 있는 영상 경로
     private bool pendingStandby; // 로드 완료 후 대기 프레임으로 이동해야 하는 상태
+    private bool heldAtEnd;      // 마지막 프레임에서 멈춰 있는 상태 (다시 재생하면 처음부터)
 
     // 앞으로 감을 때 영상 끝을 넘지 않도록 남겨두는 여유 시간(초)
     private const double EndMargin = 0.1;
 
-    public VideoChannel(MediaPlayer player, double standbyTime)
+    public VideoChannel(MediaPlayer player, double standbyTime, bool holdLastFrame = false)
     {
         this.player = player;
         this.standbyTime = standbyTime;
+        this.holdLastFrame = holdLastFrame;
 
         // 인스펙터에 지정된 영상이 Start()에서 자동 재생되지 않도록 먼저 꺼둔다
         player.AutoOpen = false;
@@ -62,6 +65,7 @@ public class VideoChannel
     public void Stop()
     {
         pendingStandby = false;
+        heldAtEnd = false;
         currentPath = null;
         index = -1;
         player.CloseMedia();
@@ -76,6 +80,14 @@ public class VideoChannel
         }
 
         pendingStandby = false; // 대기 프레임 이동 예약이 남아 있으면 해제 (재생이 우선)
+
+        if (heldAtEnd)
+        {
+            // 마지막 프레임에서 멈춘 상태면 처음부터 다시 재생
+            heldAtEnd = false;
+            control.Rewind();
+        }
+
         control.Play();
     }
 
@@ -101,6 +113,7 @@ public class VideoChannel
         }
 
         pendingStandby = false; // 대기 프레임 이동 예약이 남아 있으면 해제 (사용자 조작이 우선)
+        heldAtEnd = false;
 
         double target = control.GetCurrentTime() + offsetSeconds;
         double duration = player.Info != null ? player.Info.GetDuration() : 0.0;
@@ -160,6 +173,7 @@ public class VideoChannel
             if (autoPlay)
             {
                 pendingStandby = false;
+                heldAtEnd = false;
                 control.Rewind();
                 control.Play();
             }
@@ -172,6 +186,7 @@ public class VideoChannel
 
         currentPath = path;
         pendingStandby = !autoPlay; // 로드가 끝나면 대기 프레임으로 이동
+        heldAtEnd = false;
         player.OpenMedia(new MediaPath(path, MediaPathType.AbsolutePathOrURL), autoPlay);
     }
 
@@ -185,8 +200,29 @@ public class VideoChannel
         }
 
         pendingStandby = false;
+        heldAtEnd = false;
         control.Pause();
         control.Seek(standbyTime);
+    }
+
+    // 재생을 멈추고 영상 끝 직전 프레임에 머문다 (비교 화면: 마지막 영상이 끝나도 화면이 바뀌지 않도록)
+    private void HoldLastFrame()
+    {
+        IMediaControl control = player.Control;
+        if (control == null)
+        {
+            return;
+        }
+
+        pendingStandby = false;
+        heldAtEnd = true;
+        control.Pause();
+
+        double duration = player.Info != null ? player.Info.GetDuration() : 0.0;
+        if (duration > 0.0)
+        {
+            control.Seek(Math.Max(0.0, duration - EndMargin));
+        }
     }
 
     private void OnMediaPlayerEvent(MediaPlayer mp, MediaPlayerEvent.EventType et, ErrorCode errorCode)
@@ -211,6 +247,7 @@ public class VideoChannel
     }
 
     // 한 영상이 끝나면 다음 영상을 이어서 재생, 마지막이면 첫 영상 대기 화면으로 복귀
+    // (holdLastFrame 채널은 마지막 영상의 끝 프레임에서 멈춘다)
     private void OnClipFinished()
     {
         if (player.Loop)
@@ -222,6 +259,10 @@ public class VideoChannel
         if (index + 1 < clips.Count)
         {
             LoadClip(index + 1, true); // 다음 영상 자동 재생
+        }
+        else if (holdLastFrame)
+        {
+            HoldLastFrame(); // 마지막 영상 종료 -> 끝 프레임 유지
         }
         else
         {
@@ -561,7 +602,8 @@ public class VideoPlayerManager : MonoBehaviour
 
         CreateCompareLabel(name, labelText, half.transform);
 
-        return new VideoChannel(player, standbyTime);
+        // 비교 화면은 마지막 영상이 끝나도 첫 영상으로 돌아가지 않고 끝 프레임에서 멈춘다
+        return new VideoChannel(player, standbyTime, holdLastFrame: true);
     }
 
     // 영상 상자 위쪽 여백에 team1 / team2 이름을 표시한다
