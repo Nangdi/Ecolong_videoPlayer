@@ -993,10 +993,12 @@ MonoBehaviour:
   mediaPlayer: {fileID: 1366374453}
   display: {fileID: 1714365931}
   standbyTime: 0.01
+  seekStepSeconds: 5
   compareVideoResolution: {x: 2160, y: 1920}
   compareStretchToFill: 1
-  leftLabel: Team1
-  rightLabel: Team2
+  leftLabel: "\uB178\uB791\uD300"
+  rightLabel: "\uAC80\uC815\uD300"
+  compareLabelFont: {fileID: 11400000, guid: 838ba79012aca73418bdba3ae58adf47, type: 2}
   muteCompareAudio: 1
 --- !u!4 &1366374452
 Transform:

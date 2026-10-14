@@ -285,8 +285,10 @@ public class VideoPlayerManager : MonoBehaviour
     [Tooltip("체크하면 원본 비율을 무시하고 위 상자를 꽉 채운다(1920x1080 영상도 2160x1920 비율로 늘어남). 해제하면 상자 안에서 원본 비율 유지")]
     [SerializeField] private bool compareStretchToFill = true;
     [Tooltip("비교 화면 좌우 칸 위쪽 여백에 표시할 이름")]
-    [SerializeField] private string leftLabel = "team1";
-    [SerializeField] private string rightLabel = "team2";
+    [SerializeField] private string leftLabel = "노랑팀";
+    [SerializeField] private string rightLabel = "검정팀";
+    [Tooltip("비교 화면 이름표 글꼴 (한글이 들어가므로 NotoSansKR 계열 지정)")]
+    [SerializeField] private TMP_FontAsset compareLabelFont;
     [Tooltip("비교 화면에서 좌우 영상이 동시에 소리를 내지 않도록 음소거")]
     [SerializeField] private bool muteCompareAudio = true;
 
@@ -627,6 +629,7 @@ public class VideoPlayerManager : MonoBehaviour
         labelRect.offsetMax = Vector2.zero;
 
         TextMeshProUGUI label = labelObject.AddComponent<TextMeshProUGUI>();
+        if (compareLabelFont != null) label.font = compareLabelFont;
         label.text = labelText;
         label.color = Color.white;
         label.alignment = TextAlignmentOptions.Center;
